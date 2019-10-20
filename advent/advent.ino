@@ -121,6 +121,11 @@ void loop() {
   DateTime now = RTC.now();
   print_time(now);
 
+  if (!RTC.isrunning()) {
+    Serial.println("RTC error!");
+    blink_led();
+  }
+
   // If not December 1-25 open all doors
   if (now.month() != 12 || (now.month() == 12 && now.day() > 25) ) {
     for ( int i = 1; i <= nr_doors; i++)
@@ -132,11 +137,6 @@ void loop() {
       else
         set_door(i, DoorClosed);
     }
-  }
-
-  if (!RTC.isrunning()) {
-    Serial.println("RTC error!");
-    blink_led();
   }
 
   delay(6000); // TODO: Put to sleep and turn off servo power
