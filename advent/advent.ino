@@ -4,10 +4,10 @@
 #include "RTClib.h"
 
 // Constants (Stuff that never changes)
-const int door_open_speed = 2; // lower is faster
-const int servo_min = 150;
-const int servo_max = 600;
-const int nr_doors = 2;
+static const int door_open_speed = 2; // lower is faster
+static const int servo_min = 100;
+static const int servo_max = 500;
+static const int nr_doors = 24;
 
 // Packages to bundle things together
 enum DoorState { // Enumeration of possible door states
@@ -16,18 +16,41 @@ enum DoorState { // Enumeration of possible door states
   DoorClosed
 };
 typedef struct Door { // Structure for door properties
-  int number;
-  Adafruit_PWMServoDriver driver;
-  int servo;
+  const int number;
+  const Adafruit_PWMServoDriver driver;
+  const int servo;
   DoorState state;
 } Door;
 
 // Global variables (Variables that always exist)
 RTC_DS1307 RTC; // Real Time Clock
-Adafruit_PWMServoDriver driver1 = Adafruit_PWMServoDriver(0x40); // Servo driver
+Adafruit_PWMServoDriver driver0 = Adafruit_PWMServoDriver(0x40); // Servo driver
+Adafruit_PWMServoDriver driver1 = Adafruit_PWMServoDriver(0x41); // Servo driver
 Door doors[] = { // List of doors and their properties
-  {1, driver1, 14, DoorUnknown},
-  {2, driver1, 15, DoorUnknown}
+  { 1, driver0,  4, DoorClosed},
+  { 2, driver0,  3, DoorClosed},
+  { 3, driver0,  2, DoorClosed},
+  { 4, driver0,  1, DoorClosed},
+  { 5, driver0,  0, DoorClosed},
+  { 6, driver0,  9, DoorClosed},
+  { 7, driver0,  8, DoorClosed},
+  { 8, driver0,  7, DoorClosed},
+  { 9, driver0,  6, DoorClosed},
+  {10, driver0,  5, DoorClosed},
+  {11, driver0, 13, DoorClosed},
+  {12, driver0, 12, DoorClosed},
+  {13, driver0, 11, DoorClosed},
+  {14, driver0, 10, DoorClosed},
+  {15, driver1,  0, DoorClosed},
+  {16, driver1,  1, DoorClosed},
+  {17, driver1,  2, DoorClosed},
+  {18, driver1,  3, DoorClosed},
+  {19, driver1,  4, DoorClosed},
+  {20, driver1,  5, DoorClosed},
+  {21, driver1,  6, DoorClosed},
+  {22, driver1,  7, DoorClosed},
+  {23, driver1,  8, DoorClosed},
+  {24, driver1,  9, DoorClosed}
 };
 
 // Method to toggle door open/closed
@@ -44,13 +67,13 @@ void set_door(int doornum, DoorState goal) {
     if (goal == DoorOpen) {
       Serial.print(" opening... ");
       for (int pulselen = servo_min; pulselen < servo_max; pulselen++) {
-        driver1.setPWM(door.servo, 0, pulselen);
+        door.driver.setPin(door.servo, pulselen, false);
         delay(door_open_speed);
       }
     } else {
       Serial.print(" closing... ");
       for (int pulselen = servo_max; pulselen > servo_min; pulselen--) {
-        driver1.setPWM(door.servo, 0, pulselen);
+        door.driver.setPin(door.servo, pulselen, false);
         delay(door_open_speed);
       }
     }
@@ -73,7 +96,8 @@ void print_time(DateTime time) {
   Serial.print(time.minute(), DEC);
   Serial.print(':');
   Serial.print(time.second(), DEC);
-  Serial.println(']');
+  Serial.print(']');
+  Serial.print(' ');
 }
 
 // Method for blinking LED in case of problem
@@ -86,6 +110,56 @@ void blink_led() {
   }
 }
 
+// Disable all servos to limit idle and max current draw
+void clear_servos() {
+  for (int i = 0; i < nr_doors; i++)
+    doors[i].driver.setPin(doors[i].servo, 0, false);
+}
+
+// Reset and initialize servo drivers
+void reset_drivers() {
+  driver0.reset();
+  driver1.reset();
+  delay(100);
+  driver0.begin();
+  driver1.begin();
+  driver0.setPWMFreq(50);
+  driver1.setPWMFreq(50);
+}
+
+// Manually control the doors
+void manual_control() {
+  if (Serial.read() != -1) {
+    Serial.println("Switched to manual door control");
+    Serial.println("Enter [a-x] to selecta door");
+
+    for (int i = 0; i < nr_doors; i++) {
+      Serial.print("(");
+      Serial.print((char)('a' + i));
+      Serial.print(") ");
+      Serial.println(doors[i].number);
+    }
+
+    Door* manual_door = &doors[0];
+    char c = -1;
+    while (true) {
+      Serial.print("Controlling door ");
+      Serial.println(manual_door->number);
+
+      while (c == -1) {
+        int val = map(analogRead(A0), 0, 1024, servo_min, servo_max);
+        manual_door->driver.setPin(manual_door->servo, val, false);
+        delay(10);
+        c = Serial.read();
+      }
+
+      manual_door = &doors[c - 'a'];
+      c = -1;
+    }
+
+  }
+}
+
 // The program starts here
 void setup() {
   // Setup serial
@@ -93,10 +167,13 @@ void setup() {
   Serial.println("Starting setup");
 
   // Setup LED
+  Serial.print("Setup LED... ");
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
+  Serial.println("done");
 
   // Setup clock
+  Serial.print("Setup RTC... ");
   Wire.begin();
   RTC.begin();
   if (!RTC.isrunning()) { // Only set time if no time is present
@@ -107,11 +184,20 @@ void setup() {
     Serial.println("RTC error!");
     blink_led();
   }
+  Serial.println("done");
   
-  // Setup servo driver
-  driver1.begin();
-  driver1.setPWMFreq(60);
+  // Setup servo drivers
+  Serial.print("Setup PCA9685... ");
+  reset_drivers();
+  clear_servos();
+  Serial.println("done");
+  
+  // Pause for switch to manual control
+  Serial.println("Press any key within 10s to enter manual mode");
+  delay(10000);
+  manual_control();
 
+  print_time(RTC.now());
   Serial.println("Starting loop");
 }
 
@@ -121,15 +207,19 @@ void loop() {
   DateTime now = RTC.now();
   print_time(now);
 
+  // Check if RTC still functions
   if (!RTC.isrunning()) {
     Serial.println("RTC error!");
     blink_led();
   }
 
-  // If not December 1-25 open all doors
-  if (now.month() != 12 || (now.month() == 12 && now.day() > 25) ) {
-    for ( int i = 1; i <= nr_doors; i++)
-      set_door(i, DoorOpen);
+  // Wake servo drivers
+  driver0.wakeup();
+  driver1.wakeup();
+
+  // If not December 1-24 do nothing (assumes doors are closed manually before Dec 1st)
+  if (now.month() != 12 || (now.month() == 12 && now.day() > 24) ) {
+    Serial.println("Nothing to do");
   } else { // If in advent period open door for each day
     for ( int i = 1; i <= nr_doors; i++) {
       if (i <= now.day())
@@ -139,5 +229,9 @@ void loop() {
     }
   }
 
-  delay(6000); // TODO: Put to sleep and turn off servo power
+  // Set servo drivers to sleep
+  driver0.sleep();
+  driver1.sleep();
+  
+  delay(5000);
 }
