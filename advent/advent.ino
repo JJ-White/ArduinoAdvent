@@ -235,6 +235,12 @@ void loop() {
     }
   }
 
+  // Test mode, open all doors in sequentially
+  //  for ( int i = 1; i <= nr_doors; i++) {
+  //    set_door(i, DoorOpen);
+  //    clear_servos();
+  //  }
+
   // Set servo drivers to sleep
   driver0.sleep();
   driver1.sleep();
