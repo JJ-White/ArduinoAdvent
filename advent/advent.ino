@@ -132,6 +132,10 @@ void manual_control() {
   Serial.println("Switched to manual door control");
   Serial.println("Enter [a-x] to select a door");
 
+  // Clear serial buffer
+  while (Serial.read() != -1)
+    Serial.read();
+
   for (int i = 0; i < nr_doors; i++) {
     Serial.print("(");
     Serial.print((char)('a' + i));
@@ -149,7 +153,9 @@ void manual_control() {
       int val = map(analogRead(A0), 0, 1024, servo_min, servo_max);
       manual_door->driver.setPin(manual_door->servo, val, false);
       delay(10);
-      c = Serial.read();
+      do {
+        c = Serial.read();
+      } while (c == '\n' );
     }
     clear_servos();
 
