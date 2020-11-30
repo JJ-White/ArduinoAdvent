@@ -181,7 +181,8 @@ void setup() {
   Serial.print("Setup RTC... ");
   Wire.begin();
   RTC.begin();
-  if (!RTC.isrunning()) { // Only set time if no time is present
+  // Only set time if no time is present, otherwise time will be set back on each reset!
+  if (!RTC.isrunning()) {
     Serial.println("Set date on RTC");
     RTC.adjust(DateTime(__DATE__, __TIME__)); // Set date to compile date
   }
